@@ -31,6 +31,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'quote.apps.QuoteConfig',
     'weather.apps.WeatherConfig',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -82,6 +83,8 @@ CACHES = {
         }
     }
 }
+
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
