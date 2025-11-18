@@ -1,12 +1,20 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 import os
 import json
 from google import genai
 from dotenv import load_dotenv
+from ipware import get_client_ip
 from SPARQLWrapper import SPARQLWrapper, JSON
 import wikipediaapi
 
-def get_quote(request):
+def ip(request):
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return render(request, "quote/main.html", {"ip": ip})
+#def get_quote(request):
     wiki_wiki = wikipediaapi.Wikipedia(user_agent='TestProject (test@gmail.com)', language='en')
     load_dotenv()
     GEMINI_API_KEY=os.getenv('GEMINI_API_KEY')
@@ -41,7 +49,6 @@ def get_quote(request):
             }
         return None
 
-
     data = fetch_city_data("Berlin", "Germany")
     data_json = json.dumps(data, ensure_ascii=False)
 
@@ -64,4 +71,4 @@ def get_quote(request):
     except:
         text = response.candidates[0].content.parts[0].text
 
-    return render(request, "quote/main.html", {"text": text})
+    #return render(request, "quote/main.html", {"text": text})
