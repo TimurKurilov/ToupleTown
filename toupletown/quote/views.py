@@ -1,26 +1,30 @@
-from django.shortcuts import render, get_object_or_404
 import os
 import json
+import requests
+import wikipediaapi
 from google import genai
 from dotenv import load_dotenv
-from ipware import get_client_ip
 from SPARQLWrapper import SPARQLWrapper, JSON
-import wikipediaapi
+from django.shortcuts import render, get_object_or_404
 
-def ip(request):
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return render(request, "quote/main.html", {"ip": ip})
-#def get_quote(request):
+
+def get_quote(request):
     wiki_wiki = wikipediaapi.Wikipedia(user_agent='TestProject (test@gmail.com)', language='en')
     load_dotenv()
     GEMINI_API_KEY=os.getenv('GEMINI_API_KEY')
     client = genai.Client(api_key=GEMINI_API_KEY)
-
+    r = requests.get("https://api.2ip.io/?token=bwrl3ve9n2pevkd7")
+    datarequest = r.json()
+    city_name = datarequest["city"]
+    country_name = datarequest["country"]
+    
+    
     def fetch_city_data(city_name, country_name):
+        r = requests.get("https://api.2ip.io/?token=bwrl3ve9n2pevkd7")
+        datarequest = r.json()
+        city_name = datarequest["city"]
+        country_name = datarequest["country"]
+        
         page = wiki_wiki.page(city_name)
         if page.exists():
             summary = '. '.join(page.summary.split('. ')[:3])
@@ -48,15 +52,16 @@ def ip(request):
                 "info": summary
             }
         return None
-
-    data = fetch_city_data("Berlin", "Germany")
+    
+    data = fetch_city_data(country_name, city_name)
     data_json = json.dumps(data, ensure_ascii=False)
+    
 
     prompt = (
         "Ты — генератор кратких фактов о городах. "
+        "Отвечай строго на Русском. "
         "Работай строго на основе данных, переданных в INPUT. "
         "Нельзя добавлять фактов, которых нет в INPUT. "
-        "Если информации недостаточно — отвечай: Недостаточно данных для факта. "
         "Требования: 1 факт, максимум 2 предложения. Факт должен быть конкретным. "
         "Без оценочных суждений. Формат: FACT: <текст>. "
         f"\nINPUT:\n{data_json}"
@@ -71,4 +76,4 @@ def ip(request):
     except:
         text = response.candidates[0].content.parts[0].text
 
-    #return render(request, "quote/main.html", {"text": text})
+    return render(request, "quote/main.html", {"text": text, "data_json": data_json, "citygpt": city_name, "countrygpt": country_name})
