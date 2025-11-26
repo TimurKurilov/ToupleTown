@@ -6,30 +6,28 @@ from google import genai
 from dotenv import load_dotenv
 from SPARQLWrapper import SPARQLWrapper, JSON
 from django.shortcuts import render, get_object_or_404
+from .models import CityRawData
 from django.core.cache import cache
 
-
-def get_quote(request):
-    wiki_wiki = wikipediaapi.Wikipedia(user_agent='TestProject (test@gmail.com)', language='en')
-    load_dotenv()
-    GEMINI_API_KEY=os.getenv('GEMINI_API_KEY')
-    TOKEN = os.getenv("TOKEN")
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    r = requests.get(f"https://api.2ip.io/?token={TOKEN}")
-    datarequest = r.json()
-    city_name = datarequest["city"]
-    country_name = datarequest["country"]
     
-    
-    def fetch_city_data(city_name, country_name):
-        r = requests.get("https://api.2ip.io/?token=bwrl3ve9n2pevkd7")
-        datarequest = r.json()
-        city_name = datarequest["city"]
-        country_name = datarequest["country"]
+def fetch_city_data(city_name, country_name):
+        wiki_wiki = wikipediaapi.Wikipedia(user_agent='TestProject (test@gmail.com)', language='en')
+        load_dotenv()
+        GEMINI_API_KEY=os.getenv('GEMINI_API_KEY')
+        TOKEN = os.getenv("TOKEN")
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        if "geo" not in request.session:
+            r = requests.get(f"https://api.2ip.io/?token={TOKEN}")
+            requests.request.session["geo"] = r.json()
+        geo = requests.request.session["geo"]
+        city_name = geo["city"]
+        country_name = geo["country"]
+        
         
         page = wiki_wiki.page(city_name)
         if page.exists():
             summary = '. '.join(page.summary.split('. ')[:5])
+            summary_raw = '. '.join(page.summary.split('. ')[:12])
 
         sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
         query = f"""
@@ -41,43 +39,56 @@ def get_quote(request):
         }}
         LIMIT 1
         """
+        
         sparql.setQuery(query)
         sparql.setReturnFormat(JSON)
         results = sparql.query().convert()
 
         if results["results"]["bindings"]:
             res = results["results"]["bindings"][0]
-            return {
+            x = {
                 "city": city_name,
                 "country": country_name,
                 "population": res.get("population", {}).get("value"),
                 "info": summary
             }
-        return None
-    
-    data = fetch_city_data(country_name, city_name)
-    data_json = json.dumps(data, ensure_ascii=False)
-    
+        data = fetch_city_data(country_name, city_name)
+        data_json = json.dumps(data, ensure_ascii=False)
 
-    prompt = (
-        "Ты — генератор кратких фактов о городах. "
-        "Отвечай строго на Русском. "
-        "Работай строго на основе данных, переданных в INPUT. "
-        "Нельзя добавлять фактов, которых нет в INPUT. "
-        "Требования: 1 факт, максимум 2 предложения. Факт должен быть конкретным. "
-        "Без оценочных суждений. Формат: FACT: <текст>. "
-        f"\nINPUT:\n{data_json}"
-    )
+        obj, created = CityRawData.objects.get_or_create(
+        city=city_name,
+        defaults={
+            'country': country_name,
+            'info': summary,
+            'raw': {
+                'population': x[population],
+                'founded': x[founded],
+                'wikidata_raw': summary_raw,
+            }
+        }
+    )   
+        if cache.get(f"{city_name}:{country_name}"):
+            return render("quote/main.html", {"text": r.get(f"{city_name}:{text}").decode("utf-8"), "data_json": data_json, "citygpt": city_name, "countrygpt": country_name})
+        else:
+            prompt = (
+                "Ты — генератор кратких фактов о городах. "
+                "Отвечай строго на Русском. "
+                "Работай строго на основе данных, переданных в INPUT. "
+                "Нельзя добавлять фактов, которых нет в INPUT. "
+                "Требования: 1 факт, максимум 2 предложения. Факт должен быть конкретным. "
+                "Без оценочных суждений. Формат: FACT: <текст>. "
+                f"\nINPUT:\n{data_json}"
+            )
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
-    try:
-        text = response.text
-    except:
-        text = response.candidates[0].content.parts[0].text
-        
-    cache.set(city_name, text, timeout=259200)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+            try:
+                text = response.text
+            except:
+                text = response.candidates[0].content.parts[0].text
+                
+            cache.set(f"{city_name}:{text}", timeout=259200)
 
-    return render(request, "quote/main.html", {"text": text, "data_json": data_json, "citygpt": city_name, "countrygpt": country_name})
+        return render(request, "quote/main.html", {"text": r.get(f"{city_name}:{text}").decode("utf-8"), "data_json": data_json, "citygpt": city_name, "countrygpt": country_name})

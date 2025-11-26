@@ -6,5 +6,5 @@ from quote import views as quoteviews
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("", weatherviews.main_page, name="main"),
-    path("quote/", quoteviews.get_quote, name="quote")
+    path("quote/", quoteviews.fetch_city_data, name="quote")
 ]
